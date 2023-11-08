@@ -1,0 +1,266 @@
+import { ArticleLayout } from '@/components/ArticleLayout'
+
+export const meta = {
+  author: 'Vuong Dang',
+  date: '2023-11-08',
+  title: 'Easy Full-Stack Development with Next.js and Dropwizard in Kotlin',
+  description: 'Combine Next.js and Dropwizard for creating a simple yet powerful full-stack Kotlin application.'
+}
+
+export default (props) => <ArticleLayout meta={meta} {...props} />
+
+I recently needed to add a simple frontend page to a Dropwizard-based service. 
+In this blog, I'll outline the steps to integrate Next.js with Dropwizard, based on this experience.
+
+Let's start by setting up our Dropwizard application, which forms the backbone of our backend services.
+
+## Create a dropwizard app
+
+- Open IntelliJ and create a new Maven project
+
+- Install the Maven Wrapper
+Navigate to the project directory: `cd dropwizard-kotlin-nextjs`
+```
+    mvn -N io.takari:maven:wrapper
+    # verify the maven wrapper
+    mvnw clean  
+```
+
+- Add kotlin support and dropwizard dependencies. More info on [Kotlin doc](https://kotlinlang.org/docs/maven.html#use-jdk-17)
+
+```
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <kotlin.version>1.9.20</kotlin.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.dropwizard</groupId>
+                <artifactId>dropwizard-bom</artifactId>
+                <version>4.0.4</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.jetbrains.kotlin</groupId>
+            <artifactId>kotlin-stdlib</artifactId>
+            <version>${kotlin.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.dropwizard</groupId>
+            <artifactId>dropwizard-core</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <sourceDirectory>${project.basedir}/src/main/kotlin</sourceDirectory>
+        <testSourceDirectory>${project.basedir}/src/test/kotlin</testSourceDirectory>
+        <plugins>
+            <plugin>
+                <groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-maven-plugin</artifactId>
+                <version>${kotlin.version}</version>
+
+                <executions>
+                    <execution>
+                        <id>compile</id>
+                        <goals>
+                            <goal>compile</goal>
+                        </goals>
+                    </execution>
+
+                    <execution>
+                        <id>test-compile</id>
+                        <goals>
+                            <goal>test-compile</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+```
+
+With our Dropwizard app set up, we're ready to integrate the Next.js frontend.
+
+## Add Next.js application using create-next-app
+We'll create a Next.js app under src/main/webapp
+```
+cd src/main
+npx create-next-app@latest
+```
+After the prompts, create-next-app will create `webapp` folder under `src/main`
+
+Checkout [installation guide](https://nextjs.org/docs/getting-started/installation) for more info.
+
+## Build Next.js webapp with maven plugin
+We'll use maven plugin to build the Next.js webapp, and copy the static outputs under src/main/resources/assets
+
+- Build Next.js as a Single-Page Application (SPA) [Details](https://nextjs.org/docs/pages/building-your-application/deploying/static-exports)
+To enable a static export, change the output mode inside next.config.js:
+```javascript
+    /** @type {import('next').NextConfig} */
+    const nextConfig = {
+        output: 'export',
+    }
+    module.exports = nextConfig
+```
+
+- Build Next.js app using `frontend-maven-plugin`
+Update pom.xml, configure the plugin to run `npm install` and `npm run build`. 
+After running next build, Next.js will produce an `out` folder under `src/main/webapp` which contains the HTML/CSS/JS assets.
+We wil then configure the `maven-resources-plugin` to copy `src/main/webapp/out/*` to `target/classes/assets`
+```
+    <plugin>
+        <groupId>com.github.eirslett</groupId>
+        <artifactId>frontend-maven-plugin</artifactId>
+        <version>1.14.2</version>
+        <configuration>
+            <workingDirectory>src/main/webapp</workingDirectory>
+        </configuration>
+        <executions>
+            <execution>
+                <id>install node and npm</id>
+                <goals>
+                    <goal>install-node-and-npm</goal>
+                </goals>
+                <!-- optional: default phase is "generate-resources" -->
+                <phase>generate-resources</phase>
+                <configuration>
+                    <nodeVersion>v21.1.0</nodeVersion>
+                </configuration>
+            </execution>
+            <execution>
+                <id>npm install</id>
+                <goals>
+                    <goal>npm</goal>
+                </goals>
+                <phase>generate-resources</phase>
+                <configuration>
+                    <arguments>install</arguments>
+                </configuration>
+            </execution>
+            <execution>
+                <id>build nextjs</id>
+                <goals>
+                    <goal>npm</goal>
+                </goals>
+                <phase>generate-resources</phase>
+                <configuration>
+                    <arguments>run build</arguments>
+                </configuration>
+            </execution>
+        </executions>
+    </plugin>
+    <plugin>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+            <execution>
+                <phase>generate-resources</phase>
+                <goals>
+                    <goal>copy-resources</goal>
+                </goals>
+                <configuration>
+                    <outputDirectory>${project.build.directory}/classes/assets</outputDirectory>
+                    <resources>
+                        <resource>
+                            <directory>src/main/webapp/out</directory>
+                            <filtering>false</filtering>
+                        </resource>
+                    </resources>
+                </configuration>
+            </execution>
+        </executions>
+    </plugin>
+```
+
+In this setup, we use the `<phase>generate-resources</phase>` to build Next.js and copy resources. 
+This phase is part of the Maven (mvn) compile process, streamlining the development workflow.
+However, if your goal is to build Next.js and copy resources as part of the packaging step, 
+you could use <phase>prepare-package</phase> instead.
+
+## Serve static assets from the root path
+
+Configure dropwizard to serve static assets under [/](http://localhost:8080), and REST api under [/api/](http://localhost:8080/api/)
+
+- Update config.yml
+```yml
+server:
+  rootPath: /api/
+```
+
+- Update pom.xml, add dropwizard-assets dependency
+```xml
+<dependency>
+    <groupId>io.dropwizard</groupId>
+    <artifactId>dropwizard-assets</artifactId>
+</dependency>
+```
+
+- Add AssetsBundle to the app. 
+With this config, src/main/resources/assets/ would be served up from /, default to /index.html
+
+```java
+ override fun initialize(bootstrap: Bootstrap<Config>?) {
+        bootstrap!!.addBundle(AssetsBundle("/assets/", "/", "index.html"))
+    }
+```
+
+More info [here](https://www.dropwizard.io/en/stable/manual/core.html#serving-assets)
+
+
+## Fetch data from dropwizard rest api
+
+Let's update page.tsx to get data from the '/api/hello' endpoint and display the fetched message
+
+```
+'use client'
+import Image from 'next/image'
+import { useEffect, useState } from 'react';
+
+export default function Home() {
+
+  const [message, setMessage] = useState(''); // State to store the message
+
+  useEffect(() => {
+    // Call dropwizard REST api
+    const fetchData = async () => {
+      try {
+        const response = await fetch('/api/hello');
+        const helloDto = await response.json();
+        setMessage(helloDto.message);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        setMessage('Failed to load message');
+      }
+    };
+
+    fetchData();
+  }, []);
+  
+  return (
+    <main className="container flex items-center p-4 mx-auto min-h-screen justify-center">
+        <p className="font-mono text-sm xl:text-xl code p-4 bg-gradient-to-r from-indigo-500 via-blue-500 to-blue-400 rounded text-transparent bg-clip-text">
+          {message}
+        </p>
+    </main>
+  )
+}
+```
+
+## Summary
+
+This blog post shows how to integrate Next.js with Dropwizard, 
+covering the setup of both frameworks and demonstrating how to serve and fetch data in a full-stack kotlin application.
+
+It's important to note that using Next.js with static export comes with certain limitations, which are detailed in the Next.js documentation on [static exports](https://nextjs.org/docs/pages/building-your-application/deploying/static-exports).
+
+You can find the complete source code for this tutorial on [GitHub](https://github.com/vuongddang/til/tree/main/dropwizard-kotlin-nextjs)
