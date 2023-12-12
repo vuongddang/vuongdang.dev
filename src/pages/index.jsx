@@ -165,8 +165,12 @@ export default function Home({ articles }) {
           <h1 className="text-4xl font-bold tracking-tight text-zinc-800 dark:text-zinc-100 sm:text-5xl">
             A passionate software engineer
           </h1>
-          <p className="mt-6 text-base text-zinc-600 dark:text-zinc-400">
-            Hi, I’m Vuong Dang, a software engineer passionate about building successful products. I excel in creating scalable backend systems and data-driven apps using Spring Boot and AWS, and I am expanding my skills to include full-stack web development. Let’s build amazing things together!
+          <p className="mt-6 text-lg text-zinc-600 dark:text-zinc-400">
+            Hi, I&apos;m Vuong Dang, a software engineer skilled in backend systems and data-driven applications using Spring Boot and AWS, now venturing into full-stack development. 
+            Beyond coding, my world is enriched by music and literature - I&apos;m learning piano and guitar, and I&apos;m an avid reader, constantly exploring new ideas and perspectives. 
+          </p>
+          <p className="mt-4 text-lg text-zinc-600 dark:text-zinc-400">
+            Keen to collaborate and innovate, I am eager to turn creative visions into impactful solutions. Let&apos;s connect!
           </p>
           <div className="mt-6 flex gap-6">
             <SocialLink
